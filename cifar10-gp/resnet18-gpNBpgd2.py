@@ -55,12 +55,12 @@ parser = argparse.ArgumentParser(description='ResNet18 generalization attack')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--pr', default=0.05, type=float, help='poison rate')
 parser.add_argument('--budget', default=50, type=int, help='budget of perturbation size')
-parser.add_argument('--sigma', default=1.0, type=float, help='variance of gaussian distribution')
+parser.add_argument('--sigma', default=0.05, type=float, help='variance of gaussian distribution')
 parser.add_argument('--epochs', default=200, type=int, help='num of epochs')
 parser.add_argument('--plr', default=0.01, type=float, help='learning rate of poison')
 parser.add_argument('--num', default=20, type=int, help='number of gaussian noise')
 parser.add_argument('--save', default='p5_lr001', type=str, help='save path for dataloader')
-parser.add_argument('--inner', default = 5, type=int, help='iterations for inner')
+parser.add_argument('--inner', default = 10, type=int, help='iterations for inner')
 parser.add_argument('--outer', default=20, type=int, help='steps for pgd')
 #parser.add_argument('')
 # parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
@@ -144,7 +144,7 @@ for epoch in range(args.epochs):
     
     # store sharpness
     # innerloader = data_shuffle(poisonloader, cleanloader, 128)
-    sharp_all = sharp_cal(net, criterion, innerloader, add_gaussian2, 0.05)
+    sharp_all = sharp_cal(net, criterion, innerloader, add_gaussian2, args.sigma)
     sharpness.append(sharp_all)
     np.savetxt('sharp/resnet18NBpgd2/'+args.save+'_sharp.txt', np.array(sharpness))
     plt.clf()
@@ -170,7 +170,7 @@ for epoch in range(args.epochs):
             loss_all = 0
             for _ in range(args.num):
                 net_clone = copy.deepcopy(net)
-                add_gaussian2(net_clone, args.sigma, 0.05)
+                add_gaussian2(net_clone, args.sigma, args.sigma)
                 output_p = net_clone(input_p)
                 loss_s = criterion(output_p, target_p)
                 loss_all += loss_s

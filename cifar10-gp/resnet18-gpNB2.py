@@ -161,7 +161,7 @@ for epoch in range(args.epochs):
         loss_grad = 0
         for _ in range(args.num): #estimate expected loss
             net_clone = copy.deepcopy(net).to(device)
-            add_gaussian2(net_clone, args.sigma)#add gaussian noise to model parameters
+            add_gaussian2(net_clone, args.sigma) #add gaussian noise to model parameters
             output_p = net_clone(input_p)
             loss_s = criterion(output_p, target_p)
             loss_s.backward()
