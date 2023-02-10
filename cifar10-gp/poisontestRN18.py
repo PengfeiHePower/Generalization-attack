@@ -27,18 +27,20 @@ parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Poisoned Evaluatio
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--batch', default=128, type=int, help='batch size')
 parser.add_argument('--loaderpath', default='resnet18NB', type=str, help='path of dataloaders')
-parser.add_argument('--name', default='p5_lr0001', type=str, help='name of dataloaders')
+parser.add_argument('--save', default='p5_lr0001', type=str, help='name of dataloaders')
 parser.add_argument('--gaussian', default=0, type=int, help='gaussian noise type')
 parser.add_argument('--epochs', default=200, type=int, help='training epochs')
 args = parser.parse_args()
+
+print(args)
 
 class PoisonTransferCIFAR10Pair(CIFAR10):
     """CIFAR10 Dataset.
     """
     def __init__(self, root='data', train=True, transform=None, download=True):
         super(PoisonTransferCIFAR10Pair, self).__init__(root=root, train=train, download=download, transform=transform)
-        self.data = (np.load('./poisoned/' + args.loaderpath + '/' + args.name + '_gpimage.npy').transpose([0, 2, 3, 1]) * 255).astype(np.uint8)
-        self.targets = np.load('./poisoned/' + args.loaderpath + '/' + args.name + '_gplabel.npy')
+        self.data = (np.load('./poisoned/' + args.loaderpath + '/' + args.save + '_gpimage.npy').transpose([0, 2, 3, 1]) * 255).astype(np.uint8)
+        self.targets = np.load('./poisoned/' + args.loaderpath + '/' + args.save + '_gplabel.npy')
 
     def __getitem__(self, index):
         img, target = self.data[index], self.targets[index]
@@ -115,7 +117,7 @@ def test(epoch, net):
         }
         if not os.path.isdir('Cifar10checkpoint'):
             os.mkdir('Cifar10checkpoint')
-        torch.save(state, './Cifar10checkpoint/poisontest/' + args.loaderpath + '/' +args.name+'_RN18_gp.pth')
+        torch.save(state, './Cifar10checkpoint/poisontest/' + args.loaderpath + '/' +args.save+'_RN18_gp.pth')
         best_acc = acc
         
 
@@ -159,7 +161,7 @@ for epoch in range(start_epoch, start_epoch+args.epochs): # 200 epochs
     train(epoch, net, optimizer, trainloader)
     test(epoch, net)
     acc_np = np.array(acc_test)
-    np.savetxt('results/' + args.loaderpath + '/' +args.name+'_testAcc_gp.txt', acc_np)
+    np.savetxt('results/' + args.loaderpath + '/' + args.save +'_testAcc_gp.txt', acc_np)
     scheduler.step()
     
 # compute final sharpness
@@ -175,5 +177,5 @@ plt.ylabel('test accuracy',fontsize=12,color=(0,0,0), weight='bold')
 plt.xticks(size=12, weight='bold')
 plt.yticks(size=12, weight='bold')
 plt.plot(list(range(1,len(acc_test)+1)), acc_test)
-plt.savefig('./figures/'+ args.loaderpath + '/' + args.name+'_acc_gp.png')
+plt.savefig('./figures/'+ args.loaderpath + '/' + args.save+'_acc_gp.png')
 print('Figure saved.')
