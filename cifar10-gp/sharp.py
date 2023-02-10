@@ -26,7 +26,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Poisoned Evaluation')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--batch', default=128, type=int, help='batch size')
-parser.add_argument('--loaderpath', default='poisoned/resnet18/', type=str, help='path of dataloaders')
+parser.add_argument('--loaderpath', default='resnet18', type=str, help='path of dataloaders')
 parser.add_argument('--name', default='', type=str, help='path of models')
 args = parser.parse_args()
 
@@ -116,12 +116,3 @@ for _ in range(5):
             train_n += targets.size(0)
         loss_poison = loss_poison/(train_n * 20)
     print('sharpness2:', loss_poison)
-
-# plt.figure(figsize=(8, 8))
-# plt.xlabel('epoch',fontsize=12,color=(0,0,0), weight='bold')
-# plt.ylabel('test accuracy',fontsize=12,color=(0,0,0), weight='bold')
-# plt.xticks(size=12, weight='bold')
-# plt.yticks(size=12, weight='bold')
-# plt.plot(list(range(1,len(acc_test)+1)), acc_test)
-# plt.savefig('./figures/resnet18/'+args.name+'acc_gp.png')
-# print('Figure saved.')
