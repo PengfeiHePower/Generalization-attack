@@ -41,12 +41,12 @@ transform_test = transforms.Compose([
 ])
 
 trainset = torchvision.datasets.CIFAR10(
-    root='./data', train=True, download=False, transform=transform_train)
+    root='./data', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(
     trainset, batch_size=128, shuffle=True, num_workers=2)
 
 testset = torchvision.datasets.CIFAR10(
-    root='./data', train=False, download=False, transform=transform_test)
+    root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(
     testset, batch_size=100, shuffle=False, num_workers=2)
 
@@ -132,41 +132,10 @@ for epoch in range(start_epoch, start_epoch+200):
     np.savetxt('results/resnet18/testAcc_clean.txt', acc_np)
     scheduler_clean.step()
 
-sharp1 = []
-sharp2 = []
-
-for _ in range(1):
-    loss_poison = 0
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
-            inputs, targets = inputs.to(device), targets.to(device)
-            for _ in range(20):
-                net_clone = copy.deepcopy(net_clean)
-                add_gaussian(net_clone, 0.5)
-                output_p = net_clone(inputs)
-                loss_s = criterion(output_p, targets)
-                loss_poison = loss_poison + loss_s
-        loss_poison = loss_poison.item()/20
-        sharp1.append(loss_poison)
-        print('sharpness:', loss_poison)
-
-    loss_poison = 0
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
-            inputs, targets = inputs.to(device), targets.to(device)
-            for _ in range(20):
-                net_clone = copy.deepcopy(net_clean)
-                add_gaussian2(net_clone)
-                output_p = net_clone(inputs)
-                loss_s = criterion(output_p, targets)
-                loss_poison = loss_poison + loss_s
-        loss_poison = loss_poison.item()/20
-        sharp2.append(loss_poison)
-        print('sharpness2:', loss_poison)
-
-np.savetxt('sharp/resnet18/sharp1_clean.txt', np.array(sharp1))
-np.savetext('sharp/resnet18/sharp2_clean.txt', np.array(sharp2))
-
+sharpness1 = sharp_cal(net_clean, criterion, trainloader, add_gaussian, 1.0)
+sharpness2 = sharp_cal(net_clean, criterion, trainloader, add_gaussian2, 0.05)
+print('sharpness1:', sharpness1)
+print('sharpness2:', sharpness2)
 
 plt.figure(figsize=(8, 8))
 plt.xlabel('epoch',fontsize=12,color=(0,0,0), weight='bold')
@@ -174,5 +143,5 @@ plt.ylabel('test accuracy',fontsize=12,color=(0,0,0), weight='bold')
 plt.xticks(size=12, weight='bold')
 plt.yticks(size=12, weight='bold')
 plt.plot(list(range(1,len(acc_test)+1)), acc_test)
-plt.savefig('./figures/resnet18/clean.jpg')
+plt.savefig('./figures/resnet18/clean.png')
 print('Figure saved.')

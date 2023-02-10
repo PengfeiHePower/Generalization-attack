@@ -10,23 +10,23 @@ from itertools import cycle
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def add_gaussian(model, sigma):
+def add_gaussian(model, sigma=1):
     with torch.no_grad():
         for _, param in model.named_parameters():
             std = sigma * torch.std(param, unbiased=False).item()
             param_size = param.size()
-            mean_param = torch.zeros(param_size)
-            std_param = std * torch.ones(param_size)
-            gaussian_noise = torch.normal(mean_param, std_param).to(device)
+            mean_param = torch.zeros(param_size, device=device)
+            std_param = std * torch.ones(param_size, device=device)
+            gaussian_noise = torch.normal(mean_param, std_param)
             param.add_(gaussian_noise)
 
 def add_gaussian2(model, sigma=0.05):
     with torch.no_grad():
         for _, param in model.named_parameters():
             param_size = param.size()
-            mean_param = torch.zeros(param_size)
-            std_param = sigma * torch.ones(param_size)
-            gaussian_noise = torch.normal(mean_param, std_param).to(device)
+            mean_param = torch.zeros(param_size, device=device)
+            std_param = sigma * torch.ones(param_size, device=device)
+            gaussian_noise = torch.normal(mean_param, std_param)
             param.add_(gaussian_noise)
 
 def data_shuffle(poisonloader, cleanloader, batch):
@@ -45,9 +45,34 @@ def data_shuffle(poisonloader, cleanloader, batch):
     dataloader = torch.utils.data.DataLoader(dataful, batch_size=batch, shuffle=True, num_workers=2)
     return dataloader
 
-def add_perturbation(perturbation, poisonloader):
-    poisonloader_p = copy.deepcopy(poisonloader)
-    perturbation_p = copy.deepcopy(perturbation)
-    for batch_id, (item1, item2) in enumerate(zip(poisonloader_p, cycle(perturbation_p))):
-        item1[0] = item1[0]+item2[0]
-    return poisonloader_p
+
+def loss_cal(epoch, net, trainloader):
+    print('\nEpoch: %d' % epoch)
+    net.train()
+    total = 0
+    total_loss = 0
+    for batch_idx, (inputs, targets) in enumerate(trainloader):
+        inputs, targets = inputs.to(device), targets.to(device)
+        optimizer.zero_grad()
+        outputs = net(inputs)
+        loss = criterion(outputs, targets)
+        total += targets.size(0)
+        total_loss += loss.detach().item() * targets.size(0)
+
+    return total_loss, total
+
+def sharp_cal(net, criterion, trainloader, add_gaussian, sigma):
+    loss_poison = 0
+    train_n = 0
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(trainloader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            for _ in range(20):
+                net_clone = copy.deepcopy(net)
+                add_gaussian(net_clone, sigma)
+                output_p = net_clone(inputs)
+                loss_s = criterion(output_p, targets)
+                loss_poison += loss_s.item() * targets.size(0)
+                train_n += targets.size(0)
+        loss_poison = loss_poison / train_n
+    return loss_poison

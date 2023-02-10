@@ -24,6 +24,7 @@ from itertools import cycle
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print('device:', device)
 
 parser = argparse.ArgumentParser(description='ResNet18 generalization attack')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
@@ -159,7 +160,7 @@ for epoch in range(args.epochs):
     plt.xticks(size=12, weight='bold')
     plt.yticks(size=12, weight='bold')
     plt.plot(list(range(1,len(sharpness)+1)), sharpness)
-    plt.savefig('./figures/resnet18-2/'+args.save+'_sharp.jpg')
+    plt.savefig('./figures/resnet18-2/'+args.save+'_sharp.png')
     
 
     #inner optimization

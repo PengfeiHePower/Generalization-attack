@@ -1,4 +1,4 @@
-# remove poison budget
+# remove poison budget, more iterations for outer and inner
 
 import numpy as np
 import torch
@@ -22,7 +22,6 @@ from gp import *
 from random import sample
 import copy
 from itertools import cycle
-
 from PIL import Image
 from torchvision.datasets import CIFAR10
 
@@ -56,12 +55,13 @@ parser = argparse.ArgumentParser(description='ResNet18 generalization attack')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--pr', default=0.05, type=float, help='poison rate')
 parser.add_argument('--budget', default=50, type=int, help='budget of perturbation size')
-parser.add_argument('--sigma', default=0.05, type=float, help='variance of gaussian distribution')
+parser.add_argument('--sigma', default=1.0, type=float, help='variance of gaussian distribution')
 parser.add_argument('--epochs', default=200, type=int, help='num of epochs')
-parser.add_argument('--plr', default=0.001, type=float, help='learning rate of poison')
+parser.add_argument('--plr', default=0.01, type=float, help='learning rate of poison')
 parser.add_argument('--num', default=20, type=int, help='number of gaussian noise')
 parser.add_argument('--save', default='p5_lr001', type=str, help='save path for dataloader')
-parser.add_argument('--inner', default=10, type=int, help='iteration for inner')
+parser.add_argument('--inner', default = 5, type=int, help='iterations for inner')
+parser.add_argument('--outer', default=20, type=int, help='steps for pgd')
 #parser.add_argument('')
 # parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 args = parser.parse_args()
@@ -69,6 +69,7 @@ args = parser.parse_args()
 
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
 
+# epsilon = args.budget/255
 sharpness = []
 
 # prepare datasets
@@ -80,6 +81,7 @@ transform_train = transforms.Compose([
 trainset = torchvision.datasets.CIFAR10(
     root='./data', train=True, download=False, transform=transform_train)
 trainsize = len(trainset)
+
 
 # uniform random initalization of poisons
 poisonsize = int(trainsize * args.pr)
@@ -127,51 +129,59 @@ def train(epoch, net, optimizer, trainloader):
                      % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
 
-print('==> Poisons crafting..')
+
 for epoch in range(args.epochs):
     #load poisons
     poisonset = PoisonTransferCIFAR10Pair(image_np = poisonimage_np, label_np =poisonlabel_np,  train=True, transform=transform_train, download=False)
     poisonloader = torch.utils.data.DataLoader(
         poisonset, batch_size=128, shuffle=False, num_workers=4)
-
+    
     #inner optimization
-    # poison batches
+    print('==> Inner training...')
     innerloader = data_shuffle(poisonloader, cleanloader, 128)
     for _ in range(args.inner):
         train(epoch, net, optimizer, innerloader)
+        
+    #outer optimization
+    sharp_all = 0
+    train_n = 0
+    for batch_id, (images, targets) in enumerate(poisonloader):
+        print('batch:', batch_id)
+        input_p, target_p = images.to(device), targets.to(device)
+        input_p.requires_grad = True
+
+        #outer: update poisoned data
+        for j in range(args.outer):
+            input_p.requires_grad = True
+            loss_all = 0
+            for _ in range(args.num):
+                net_clone = copy.deepcopy(net)
+                add_gaussian(net_clone, args.sigma)
+                output_p = net_clone(input_p)
+                loss_s = criterion(output_p, target_p)
+                loss_all += loss_s
+            loss_all.backward()
+            with torch.no_grad():
+                input_p.copy_(torch.clamp(input_p + args.plr * torch.sign(input_p.grad), min=0.0, max=1.0))
+                input_p.grad = None
+        poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
     # store sharpness
-    sharp_all = sharp_cal(net, criterion, innerloader, add_gaussian2, args.sigma)
+    innerloader = data_shuffle(poisonloader, cleanloader, 128)
+    sharp_all = sharp_cal(net, criterion, innerloader, add_gaussian)
     sharpness.append(sharp_all)
-    np.savetxt('sharp/resnet18NB2/'+args.save+'_sharp.txt', np.array(sharpness))#store sharpness
-    plt.clf()#visualize sharpness
+    np.savetxt('sharp/resnet18NBpgd/'+args.save+'_sharp.txt', np.array(sharpness))
+    plt.clf()
     plt.figure(figsize=(8, 8))
     plt.xlabel('epoch',fontsize=12,color=(0,0,0), weight='bold')
     plt.ylabel('sharpness',fontsize=12,color=(0,0,0), weight='bold')
     plt.xticks(size=12, weight='bold')
     plt.yticks(size=12, weight='bold')
     plt.plot(list(range(1,len(sharpness)+1)), sharpness)
-    plt.savefig('./figures/resnet18NB2/'+args.save+'_sharp.png')
-
-    #outer optimization
-    for batch_id, (images, targets) in enumerate(poisonloader):
-        print('batch:', batch_id)
-        input_p, target_p = images.to(device), targets.to(device)
-        input_p.requires_grad = True
-        loss_grad = 0
-        for _ in range(args.num): #estimate expected loss
-            net_clone = copy.deepcopy(net).to(device)
-            add_gaussian2(net_clone, args.sigma)#add gaussian noise to model parameters
-            output_p = net_clone(input_p)
-            loss_s = criterion(output_p, target_p)
-            loss_s.backward()
-            grad = input_p.grad.detach()
-            loss_grad = loss_grad+grad
-        loss_grad = loss_grad/args.num
-        input_p = torch.clamp(input_p + args.plr * torch.sign(loss_grad), min=0.0, max=1.0)
-        poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
+    plt.savefig('./figures/resnet18NBpgd/'+args.save+'_sharp.png')
+    
 
 
 print('==> Data saving..')
-np.save('poisoned/resnet18NB2/'+args.save+'_gpimage.npy', poisonimage_np)
-np.save('poisoned/resnet18NB2/'+args.save+'_gplabel.npy', poisonlabel_np)
+np.save('poisoned/resnet18NBpgd/'+args.save+'_gpimage.npy', poisonimage_np)
+np.save('poisoned/resnet18NBpgd/'+args.save+'_gplabel.npy', poisonlabel_np)

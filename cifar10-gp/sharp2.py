@@ -119,5 +119,5 @@ for _ in range(5):
 # plt.xticks(size=12, weight='bold')
 # plt.yticks(size=12, weight='bold')
 # plt.plot(list(range(1,len(acc_test)+1)), acc_test)
-# plt.savefig('./figures/resnet18/'+args.name+'acc_gp.jpg')
+# plt.savefig('./figures/resnet18/'+args.name+'acc_gp.png')
 # print('Figure saved.')

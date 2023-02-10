@@ -159,7 +159,7 @@ for epoch in range(args.epochs):
     plt.xticks(size=12, weight='bold')
     plt.yticks(size=12, weight='bold')
     plt.plot(list(range(1,len(sharpness)+1)), sharpness)
-    plt.savefig('./figures/resnet18/'+args.save+'_sharp.jpg')
+    plt.savefig('./figures/resnet18/'+args.save+'_sharp.png')
     
 
     #inner optimization
