@@ -60,7 +60,7 @@ parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
 parser.add_argument('--pr', default=0.05, type=float, help='poison rate')
 # parser.add_argument('--budget', default=50, type=int, help='budget of perturbation size')
 parser.add_argument('--sigma', default=0.05, type=float, help='variance of gaussian distribution')
-parser.add_argument('--epochs', default=80, type=int, help='num of epochs')
+parser.add_argument('--epochs', default=100, type=int, help='num of epochs')
 parser.add_argument('--plr', default=0.05, type=float, help='max learning rate of poison')
 parser.add_argument('--num', default=20, type=int, help='number of gaussian noise')
 parser.add_argument('--save', default='p5_lam5', type=str, help='save path for dataloader')
@@ -68,7 +68,7 @@ parser.add_argument('--inner', default=5, type=int, help='iteration for inner')
 parser.add_argument('--plrsch', default='multistep', type = str, help = 'poison lr scheduler')
 parser.add_argument('--lam', default=5, type=float, help='penalty coefficient')
 parser.add_argument('--opt', default='sgd', type=str, help='optimizer')
-parser.add_argument('--restart', default=10, type=int, help='restart epochs')
+parser.add_argument('--restart', default=20, type=int, help='restart epochs')
 #parser.add_argument('')
 # parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 args = parser.parse_args()
@@ -174,9 +174,9 @@ def train(epoch, net, optimizer, trainloader):
         'net': net.state_dict(),
         'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save +'_train_RN18_gp.pth')
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPR'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18PPR')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPR/' +args.save +'_train_RN18_gp.pth')
      
 
 def test(epoch, net):
@@ -207,14 +207,26 @@ def test(epoch, net):
             'acc': acc,
             'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save+'_test_RN18_gp.pth') 
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPR'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18PPR')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPR/' +args.save+'_test_RN18_gp.pth') 
 
 
 
 print('==> Poisons crafting..')
 for epoch in range(args.epochs):
+    #model restart
+    if epoch % args.restart ==0:
+        net = ResNet18()
+        if args.init == 'pre':
+            checkpoint = torch.load('./Cifar10checkpoint/ResNet18.pth')
+            net.load_state_dict(checkpoint['net'])
+        net = net.to(device)
+        if args.opt == 'sgd':
+            optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+        elif args.opt == 'adam':
+            optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
+        
     #load poisons
     poisonset1 = PoisonTransferCIFAR10Pair(image_np = poisonimage_np, label_np =poisonlabel_np,
                                            train=True, transform=transform_train, download=False)
@@ -272,10 +284,10 @@ for epoch in range(args.epochs):
         input_p = torch.clamp(input_p + plr_sch(epoch) * grad, min=0.0, max=1.0)
         poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+    np.save('poisoned/resnet18PPR/'+args.save+'_gpimage.npy', poisonimage_np)
+    np.save('poisoned/resnet18PPR/'+args.save+'_gplabel.npy', poisonlabel_np)
 
 
 print('==> Data saving..')
-np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+np.save('poisoned/resnet18PPR/'+args.save+'_gpimage.npy', poisonimage_np)
+np.save('poisoned/resnet18PPR/'+args.save+'_gplabel.npy', poisonlabel_np)
