@@ -20,6 +20,7 @@ import copy
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
+parser.add_argument('--opt', default='sgd', type=str, help='optimizer used')
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -61,9 +62,12 @@ net_clean = net_clean.to(device)
 
 
 criterion = nn.CrossEntropyLoss()
-optimizer_clean = optim.SGD(net_clean.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+if args.opt == 'sgd':
+    optimizer_clean = optim.SGD(net_clean.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+elif args.opt == 'adam':
+    optimizer_clean = torch.optim.Adam(net_clean.parameters(), lr=args.lr)
 # scheduler_clean = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_clean, T_max=200)
-scheduler_clean = torch.optim.lr_scheduler.MultiStepLR(optimizer_clean, milestones=[80, 120, 160], gamma=0.1)
+scheduler_clean = torch.optim.lr_scheduler.MultiStepLR(optimizer_clean, milestones=[80, 120, 160, 200], gamma=0.1)
 
 def train(epoch, net, optimizer):
     print('\nEpoch: %d' % epoch)
@@ -125,7 +129,7 @@ def test(epoch, net):
     
 
 
-for epoch in range(start_epoch, start_epoch+200):
+for epoch in range(start_epoch, start_epoch+240):
     train(epoch, net_clean, optimizer_clean)
     test(epoch, net_clean)
     acc_np = np.array(acc_test)

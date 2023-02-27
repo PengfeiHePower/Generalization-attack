@@ -103,6 +103,7 @@ net = ResNet18()
 net = net.to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[80, 120, 160], gamma=0.1)
 
 
 # training function
@@ -157,8 +158,6 @@ for epoch in range(args.epochs):
     plt.savefig('./figures/resnet18NBpgd2/'+args.save+'_sharp.png')
         
     #outer optimization
-    sharp_all = 0
-    train_n = 0
     for batch_id, (images, targets) in enumerate(poisonloader):
         print('batch:', batch_id)
         input_p, target_p = images.to(device), targets.to(device)
@@ -170,7 +169,7 @@ for epoch in range(args.epochs):
             loss_all = 0
             for _ in range(args.num):
                 net_clone = copy.deepcopy(net)
-                add_gaussian2(net_clone, args.sigma, args.sigma)
+                add_gaussian2(net_clone, args.sigma)
                 output_p = net_clone(input_p)
                 loss_s = criterion(output_p, target_p)
                 loss_all += loss_s

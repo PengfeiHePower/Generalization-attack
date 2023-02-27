@@ -46,8 +46,7 @@ def data_shuffle(poisonloader, cleanloader, batch):
     return dataloader
 
 
-def loss_cal(epoch, net, trainloader):
-    print('\nEpoch: %d' % epoch)
+def loss_cal(net, criterion, trainloader, optimizer):
     net.train()
     total = 0
     total_loss = 0
@@ -57,22 +56,22 @@ def loss_cal(epoch, net, trainloader):
         outputs = net(inputs)
         loss = criterion(outputs, targets)
         total += targets.size(0)
-        total_loss += loss.detach().item() * targets.size(0)
+        total_loss += loss.detach().item()
 
-    return total_loss, total
+    return total_loss/len(trainloader)
 
 def sharp_cal(net, criterion, trainloader, add_gaussian, sigma):
     loss_poison = 0
     train_n = 0
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
-            inputs, targets = inputs.to(device), targets.to(device)
-            for _ in range(20):
-                net_clone = copy.deepcopy(net)
-                add_gaussian(net_clone, sigma)
-                output_p = net_clone(inputs)
-                loss_s = criterion(output_p, targets)
-                loss_poison += loss_s.item() * targets.size(0)
-                train_n += targets.size(0)
-        loss_poison = loss_poison / train_n
+    for batch_idx, (inputs, targets) in enumerate(trainloader):
+        inputs, targets = inputs.to(device), targets.to(device)
+        for _ in range(20):
+            net_clone = copy.deepcopy(net)
+            add_gaussian(net_clone, sigma)
+            output_p = net_clone(inputs)
+            loss_s = criterion(output_p, targets)
+            loss_poison += loss_s.item() 
+            # * targets.size(0)
+            # train_n += targets.size(0)
+    loss_poison = loss_poison / (20*len(trainloader))
     return loss_poison

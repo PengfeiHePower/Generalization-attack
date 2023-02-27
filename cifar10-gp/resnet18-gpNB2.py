@@ -62,6 +62,7 @@ parser.add_argument('--plr', default=0.001, type=float, help='learning rate of p
 parser.add_argument('--num', default=20, type=int, help='number of gaussian noise')
 parser.add_argument('--save', default='p5_lr001', type=str, help='save path for dataloader')
 parser.add_argument('--inner', default=10, type=int, help='iteration for inner')
+parser.add_argument('--ad', default=0, type = int, help = 'Adaptive lr or not')
 #parser.add_argument('')
 # parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 args = parser.parse_args()
@@ -101,6 +102,7 @@ net = ResNet18()
 net = net.to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[80, 120, 160], gamma=0.1)
 
 
 # training function
@@ -139,6 +141,14 @@ for epoch in range(args.epochs):
     innerloader = data_shuffle(poisonloader, cleanloader, 128)
     for _ in range(args.inner):
         train(epoch, net, optimizer, innerloader)
+    # if args.ad == 1:
+    #     optimizer = optim.SGD(net.parameters(), lr=args.lr*0.1, momentum=0.9, weight_decay=5e-4)
+    #     for _ in range(5):
+    #         train(epoch, net, optimizer, innerloader)
+    # elif args.ad == 0:
+    #     continue
+    # else:
+    #     print('Invalid AD parameter.')
     
     # store sharpness
     sharp_all = sharp_cal(net, criterion, innerloader, add_gaussian2, args.sigma)

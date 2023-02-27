@@ -27,16 +27,23 @@ parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Poisoned Evaluatio
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--batch', default=128, type=int, help='batch size')
 parser.add_argument('--loaderpath', default='resnet18', type=str, help='path of dataloaders')
-parser.add_argument('--name', default='', type=str, help='path of models')
+parser.add_argument('--modelpath', default='poisontest', type=str, help='model path')
+parser.add_argument('--savemodel', default='', type=str, help='path of models')
+parser.add_argument('--savepoison', default='', type=str, help='path of data')
+parser.add_argument('--gaussian', default=1, type=int, help='gaussian type')
+parser.add_argument('--sigma', default = 0.05, type=float, help='variance')
+parser.add_argument('--datatp', default='', type=str, help='data type')
+parser.add_argument('--sharptype', default='sharp', type=str, help='sharp type')
 args = parser.parse_args()
+print(args)
 
 class PoisonTransferCIFAR10Pair(CIFAR10):
     """CIFAR10 Dataset.
     """
     def __init__(self, root='data', train=True, transform=None, download=True):
         super(PoisonTransferCIFAR10Pair, self).__init__(root=root, train=train, download=download, transform=transform)
-        self.data = (np.load(args.loaderpath+args.name+'_gpimage.npy').transpose([0, 2, 3, 1]) * 255).astype(np.uint8)
-        self.targets = np.load(args.loaderpath+args.name+'_gplabel.npy')
+        self.data = (np.load('poisoned/'+args.loaderpath+'/'+args.savepoison+'_gpimage.npy').transpose([0, 2, 3, 1]) * 255).astype(np.uint8)
+        self.targets = np.load('poisoned/'+args.loaderpath+'/'+args.savepoison+'_gplabel.npy')
 
     def __getitem__(self, index):
         img, target = self.data[index], self.targets[index]
@@ -71,48 +78,38 @@ transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
     ])
-trainset = PoisonTransferCIFAR10Pair(train=True, transform=transform_train, download=False)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+poisonset = PoisonTransferCIFAR10Pair(train=True, transform=transform_train, download=False)
+cleanset = torchvision.datasets.CIFAR10(
+    root='./data', train=True, download=False, transform=transform_train)
+if args.datatp == 'poison':
+    trainloader = torch.utils.data.DataLoader(poisonset, batch_size=128, shuffle=True, num_workers=4)
+elif args.datatp == 'clean':
+    trainloader = torch.utils.data.DataLoader(cleanset, batch_size=128, shuffle=True, num_workers=4)
+elif args.datatp == 'mix':
+    trainset = torch.utils.data.ConcatDataset([cleanset, poisonset])
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=2)
+else:
+    print('Invalid data type.')
 
 
 # prepare model
 print('==> Building model..')
 net = ResNet18()
-checkpoint = torch.load('./Cifar10checkpoint/poisontest/'+args.name+'_RN18_gp.pth')
+checkpoint = torch.load('./Cifar10checkpoint/' + args.modelpath +'/'+args.loaderpath+'/'+args.savemodel+'_RN18_gp.pth')
 net.load_state_dict(checkpoint['net'])
 net = net.to(device)
 criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+net.train()
 
 
 #compute final sharpness
-for _ in range(5):
-    loss_poison = 0
-    train_n = 0
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
-            inputs, targets = inputs.to(device), targets.to(device)
-            for _ in range(20):
-                net_clone = copy.deepcopy(net)
-                add_gaussian(net_clone, 0.5)
-                output_p = net_clone(inputs)
-                loss_s = criterion(output_p, targets)
-                loss_poison += loss_s.item() * targets.size(0)
-            train_n += targets.size(0)
-        loss_poison = loss_poison / (train_n * 20)
-    print('sharpness1:', loss_poison)
-
-
-    loss_poison = 0
-    train_n = 0
-    with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
-            inputs, targets = inputs.to(device), targets.to(device)
-            for _ in range(20):
-                net_clone = copy.deepcopy(net)
-                add_gaussian2(net_clone)
-                output_p = net_clone(inputs)
-                loss_s = criterion(output_p, targets)
-                loss_poison += loss_s.item() * targets.size(0)
-            train_n += targets.size(0)
-        loss_poison = loss_poison/(train_n * 20)
-    print('sharpness2:', loss_poison)
+print('==> Computing sharpness..')
+if args.sharptype == 'sharp':
+    if args.gaussian == 0:
+        sharpness = sharp_cal(net, criterion, trainloader, add_gaussian, args.sigma)
+    elif args.gaussian == 1:
+        sharpness = sharp_cal(net, criterion, trainloader, add_gaussian2, args.sigma)
+elif args.sharptype == 'loss':
+    sharpness = loss_cal(net, criterion, trainloader, optimizer)
+print('sharpness:', sharpness)
