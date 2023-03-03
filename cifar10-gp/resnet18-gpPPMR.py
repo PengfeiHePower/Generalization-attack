@@ -57,7 +57,7 @@ class PoisonTransferCIFAR10Pair(CIFAR10):
 
 parser = argparse.ArgumentParser(description='ResNet18 generalization attack')
 parser.add_argument('--init', default='rand', type=str, help='init poison model')
-parser.add_argument('--lr', default=0.1, type=float, help='learning rate(inner)')
+parser.add_argument('--tlr', default=0.1, type=float, help='retrain learning rate(inner)')
 parser.add_argument('--pr', default=0.05, type=float, help='poison rate')
 # parser.add_argument('--budget', default=50, type=int, help='budget of perturbation size')
 parser.add_argument('--sigma', default=0.05, type=float, help='variance of gaussian distribution')
@@ -66,6 +66,7 @@ parser.add_argument('--plr', default=200, type=float, help='max learning rate of
 parser.add_argument('--num', default=20, type=int, help='number of gaussian noise')
 parser.add_argument('--save', default='p5-lam5', type=str, help='save path for dataloader')
 parser.add_argument('--inner', default=2, type=int, help='iteration for inner unroll')
+parser.add_argument('--tlrsch', default = 'multistep', type = str, help = 'retrain lt schedule')
 parser.add_argument('--plrsch', default='multistep', type = str, help = 'poison lr scheduler')
 parser.add_argument('--lam', default=5, type=float, help='penalty coefficient')
 parser.add_argument('--opt', default='sgd', type=str, help='optimizer')
@@ -149,6 +150,14 @@ elif args.plrsch == 'multistep':
     def plr_sch(t):
         plr_list = [200]*20+[20]*20+[2]*20
         return plr_list[t]
+    
+if args.tlrsch == 'fixed':
+    def tlr_sch(t):
+        return args.tlr
+elif args.tlrsch == 'multistep':
+    def tlr_sch(t):
+        tlr_list = [0.1]*80+[0.01]*40+[0.001]*40+[0.0001]*40
+        return tlr_list[t]
 
 # training function
 def train(epoch, net, optimizer, trainloader):
@@ -160,6 +169,8 @@ def train(epoch, net, optimizer, trainloader):
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         inputs, targets = inputs.to(device), targets.to(device)
         optimizer.zero_grad()
+        # lr = lr_schedule(epoch)
+        # opt.param_groups[0].update(lr=lr)
         outputs = net(inputs)
         loss = criterion(outputs, targets)
         loss.backward()
@@ -172,13 +183,13 @@ def train(epoch, net, optimizer, trainloader):
 
         progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                      % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
-    state = {
-        'net': net.state_dict(),
-        'epoch': epoch,
-    }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPMR'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18PPMR')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPMR/' +args.save +'_train_RN18_gp.pth')
+    # state = {
+    #     'net': net.state_dict(),
+    #     'epoch': epoch,
+    # }
+    # if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPMR'):
+    #     os.mkdir('Cifar10checkpoint/poisongen/resnet18PPMR')
+    # torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPMR/' +args.save +'_train_RN18_gp.pth')
      
 
 def test(epoch, net):
@@ -203,15 +214,15 @@ def test(epoch, net):
                          % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
     acc = 100.*correct/total
     # acc_test.append(acc)
-    print('Saving..')
-    state = {
-            'net': net.state_dict(),
-            'acc': acc,
-            'epoch': epoch,
-    }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPMR'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18PPMR')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPMR/' +args.save+'_test_RN18_gp.pth') 
+    # print('Saving..')
+    # state = {
+    #         'net': net.state_dict(),
+    #         'acc': acc,
+    #         'epoch': epoch,
+    # }
+    # if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPMR'):
+    #     os.mkdir('Cifar10checkpoint/poisongen/resnet18PPMR')
+    # torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPMR/' +args.save+'_test_RN18_gp.pth') 
 
 
 
@@ -229,18 +240,22 @@ for epoch in range(args.epochs):
     
     innerloader = data_shuffle(poisonloader1, cleanloader, 128)
     
-    for i in range(1, args.nummodel+1):
+    model_proxy_list={}
+    for i in range(1, args.nummodel): # unroll model 
         net_proxy = copy.deepcopy(model_dict[i]).to(device) ## unroll copy
         optimizer_proxy = optim.SGD(net_proxy.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
         for _ in range(args.inner): ### unroll for each model
             train(epoch, net_proxy, optimizer_proxy, innerloader)
         test(epoch, net_proxy)
-        ## compute gradient of objective
-        for batch_id, (images, targets) in enumerate(poisonloader2):
-            net_proxy.train()
-            print('batch:', batch_id)
-            input_p, target_p = images.to(device), targets.to(device)
-            input_p.requires_grad = True
+        model_proxy_list[i] = net_proxy.cpu()
+        
+    for batch_id, (images, targets) in enumerate(poisonloader2): # compute adv loss and update poison
+        print('batch:', batch_id)
+        input_p, target_p = images.to(device), targets.to(device)
+        input_p.requires_grad = True
+        grad_proxy = 0
+        for i in range(1, args.nummodel):
+            net_proxy = model_proxy_list[i].to(device)
             loss_sharp = 0
             for _ in range(args.num): #estimate expected loss
                 net_clone = copy.deepcopy(net_proxy).to(device)
@@ -253,17 +268,41 @@ for epoch in range(args.epochs):
                 loss_sharp += loss_s
             # loss_grad = loss_grad/args.num
             loss_sharp = loss_sharp/args.num #poison sharpness
-            loss_true = criterion(net(input_p), target_p) #poison nature loss
+            loss_true = criterion(net_proxy(input_p), target_p) #poison nature loss
             print('poison loss:', loss_true)
             print('poison sharpness:', loss_sharp)
             # loss_true.backward()
             loss_total = loss_sharp - args.lam * loss_true #composite loss function
             loss_total.backward()
             grad = input_p.grad.detach()
+            grad_proxy += grad
+        grad_proxy = grad_proxy / args.nummodel
+        ## update poison samples
+        input_p = torch.clamp(input_p + plr_sch(epoch)/args.T * torch.sign(grad_proxy), min=0.0, max=1.0)
+        poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
+        np.save('poisoned/resnet18PPMR/'+args.save+'_gpimage.npy', poisonimage_np)
+        np.save('poisoned/resnet18PPMR/'+args.save+'_gplabel.npy', poisonlabel_np)
     
-    np.save('poisoned/resnet18PPMR/'+args.save+'_gpimage.npy', poisonimage_np)
-    np.save('poisoned/resnet18PPMR/'+args.save+'_gplabel.npy', poisonlabel_np)
-
+    ## roll models for 1 step
+    for i in range(1, args.nummodel):
+        # print('roll:',i)
+        epoch_roll = epoch_dict[i]
+        # print('epoch_roll:', epoch_roll)
+        if epoch_roll == args.T+1:
+            epoch_roll = 1
+            model_roll = ResNet18()
+            model_dict[i] = model_roll
+            epoch_dict[i] = epoch_roll
+        else:
+            model_roll = model_dict[i].to(device)
+            optimizer_roll = optim.SGD(model_roll.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+            lr = tlr_sch(epoch_roll-1)
+            optimizer_roll.param_groups[0].update(lr=lr)
+            train(epoch_roll-1, model_roll, optimizer_roll, cleanloader)
+            epoch_roll += 1
+            model_dict[i] = model_roll.cpu()
+            epoch_dict[i] = epoch_roll
+        
 
 print('==> Data saving..')
 np.save('poisoned/resnet18PPMR/'+args.save+'_gpimage.npy', poisonimage_np)

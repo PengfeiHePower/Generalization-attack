@@ -266,7 +266,7 @@ for epoch in range(args.epochs):
         loss_total = loss_sharp - args.lam * loss_true #composite loss function
         loss_total.backward()
         grad = input_p.grad.detach()
-        input_p = torch.clamp(input_p + plr_sch(epoch) * grad, min=0.0, max=1.0)
+        input_p = torch.clamp(input_p + plr_sch(epoch) * torch.sign(grad), min=0.0, max=1.0)
         poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
     np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
