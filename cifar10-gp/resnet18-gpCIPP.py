@@ -54,7 +54,7 @@ class PoisonTransferCIFAR10Pair(CIFAR10):
 
 parser = argparse.ArgumentParser(description='ResNet18 generalization attack')
 parser.add_argument('--init', default='rand', type=str, help='init poison model')
-parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
 parser.add_argument('--pr', default=0.05, type=float, help='poison rate')
 # parser.add_argument('--budget', default=50, type=int, help='budget of perturbation size')
 parser.add_argument('--sigma', default=0.05, type=float, help='variance of gaussian distribution')
@@ -266,7 +266,7 @@ for epoch in range(args.epochs):
         loss_total = loss_sharp - args.lam * loss_true #composite loss function
         loss_total.backward()
         grad = input_p.grad.detach()
-        input_p = torch.clamp(input_p + plr_sch(epoch) * torch.sign(grad), min=0.0, max=1.0)
+        input_p = torch.clamp(input_p + plr_sch(epoch) * grad, min=0.0, max=1.0)
         poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
     np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)

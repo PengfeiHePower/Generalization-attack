@@ -6,3 +6,4 @@ data/
 log/
 figures/
 __pycache__/
+out/

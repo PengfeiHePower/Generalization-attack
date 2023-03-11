@@ -21,7 +21,9 @@ import copy
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--opt', default='sgd', type=str, help='optimizer used')
+parser.add_argument('--epochs', default=200, type=int, help='epochs')
 args = parser.parse_args()
+print(args)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 best_acc = 0  # best test accuracy
@@ -67,7 +69,7 @@ if args.opt == 'sgd':
 elif args.opt == 'adam':
     optimizer_clean = torch.optim.Adam(net_clean.parameters(), lr=args.lr)
 # scheduler_clean = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_clean, T_max=200)
-scheduler_clean = torch.optim.lr_scheduler.MultiStepLR(optimizer_clean, milestones=[80, 120, 160, 200], gamma=0.1)
+scheduler_clean = torch.optim.lr_scheduler.MultiStepLR(optimizer_clean, milestones=[80,10,10, 120, 160, 200], gamma=0.1)
 
 def train(epoch, net, optimizer):
     print('\nEpoch: %d' % epoch)
@@ -129,7 +131,7 @@ def test(epoch, net):
     
 
 
-for epoch in range(start_epoch, start_epoch+240):
+for epoch in range(start_epoch, start_epoch+args.epochs):
     train(epoch, net_clean, optimizer_clean)
     test(epoch, net_clean)
     acc_np = np.array(acc_test)

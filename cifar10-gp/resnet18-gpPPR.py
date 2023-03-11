@@ -1,6 +1,6 @@
 # remove poison budget, start from a clean pre-trained model, 
 # inner only consists of poison data, add penality to reduce the discrepency between poison and clean loss
-# restart the inner after epochs to fit different local minimizers
+# restart the inner everytime
 
 import numpy as np
 import torch
@@ -56,22 +56,22 @@ class PoisonTransferCIFAR10Pair(CIFAR10):
 
 parser = argparse.ArgumentParser(description='ResNet18 generalization attack')
 parser.add_argument('--init', default='rand', type=str, help='init poison model')
-parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
 parser.add_argument('--pr', default=0.05, type=float, help='poison rate')
 # parser.add_argument('--budget', default=50, type=int, help='budget of perturbation size')
 parser.add_argument('--sigma', default=0.05, type=float, help='variance of gaussian distribution')
-parser.add_argument('--epochs', default=100, type=int, help='num of epochs')
-parser.add_argument('--plr', default=0.05, type=float, help='max learning rate of poison')
+parser.add_argument('--epochs', default=60, type=int, help='num of epochs')
+parser.add_argument('--plr', default=0.07, type=float, help='max learning rate of poison')
 parser.add_argument('--num', default=20, type=int, help='number of gaussian noise')
 parser.add_argument('--save', default='p5_lam5', type=str, help='save path for dataloader')
-parser.add_argument('--inner', default=5, type=int, help='iteration for inner')
-parser.add_argument('--plrsch', default='multistep', type = str, help = 'poison lr scheduler')
+parser.add_argument('--inner', default=50, type=int, help='iteration for inner')
+parser.add_argument('--plrsch', default='fixed', type = str, help = 'poison lr scheduler')
 parser.add_argument('--lam', default=5, type=float, help='penalty coefficient')
 parser.add_argument('--opt', default='sgd', type=str, help='optimizer')
-parser.add_argument('--restart', default=20, type=int, help='restart epochs')
 #parser.add_argument('')
 # parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 args = parser.parse_args()
+print(args)
 
 
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
@@ -139,13 +139,8 @@ if args.plrsch == 'fixed':
         return args.plr
 elif args.plrsch == 'multistep':
     def plr_sch(t):
-        plr_list = [0.05]*60+[0.005]*40+[0.0005]*40
+        plr_list = [0.07]*60+[0.007]*40+[0.0007]*40
         return plr_list[t]
-elif args.plrsch == 'superconverge':
-    plr_sch = lambda t: np.interp([t], [0, args.epochs * 2 // 5, args.epochs], [0, args.plr, 0])[0]
-elif args.plrsch == 'linear':
-    plr_sch = lambda t: np.interp([t], [0, args.epochs // 3, args.epochs * 2 // 3, args.epochs], [args.plr, args.plr, args.plr / 10, args.plr / 100])[0]
-
 
 
 # training function
@@ -215,17 +210,18 @@ def test(epoch, net):
 
 print('==> Poisons crafting..')
 for epoch in range(args.epochs):
+    print('Craft epoch:', epoch)
     #model restart
-    if epoch % args.restart ==0:
-        net = ResNet18()
-        if args.init == 'pre':
-            checkpoint = torch.load('./Cifar10checkpoint/ResNet18.pth')
-            net.load_state_dict(checkpoint['net'])
-        net = net.to(device)
-        if args.opt == 'sgd':
-            optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-        elif args.opt == 'adam':
-            optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
+    net = ResNet18()
+    if args.init == 'pre':
+        checkpoint = torch.load('./Cifar10checkpoint/ResNet18.pth')
+        net.load_state_dict(checkpoint['net'])
+    net = net.to(device)
+    if args.opt == 'sgd':
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    elif args.opt == 'adam':
+        optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,10,10], gamma=0.1)
         
     #load poisons
     poisonset1 = PoisonTransferCIFAR10Pair(image_np = poisonimage_np, label_np =poisonlabel_np,
@@ -242,6 +238,7 @@ for epoch in range(args.epochs):
     innerloader = data_shuffle(poisonloader1, cleanloader, 128)
     for _ in range(args.inner):
         train(epoch, net, optimizer, innerloader)
+        scheduler.step()
     test(epoch, net)
     
     # sharp_all = sharp_cal(net, criterion, innerloader, add_gaussian2, args.sigma)
@@ -281,7 +278,7 @@ for epoch in range(args.epochs):
         loss_total = loss_sharp - args.lam * loss_true #composite loss function
         loss_total.backward()
         grad = input_p.grad.detach()
-        input_p = torch.clamp(input_p + plr_sch(epoch) * grad, min=0.0, max=1.0)
+        input_p = torch.clamp(input_p + plr_sch(epoch) * torch.sign(grad), min=0.0, max=1.0)
         poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
     np.save('poisoned/resnet18PPR/'+args.save+'_gpimage.npy', poisonimage_np)
