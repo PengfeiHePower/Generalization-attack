@@ -171,9 +171,9 @@ def train(epoch, net, optimizer, trainloader):
         'net': net.state_dict(),
         'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save +'_train_RN18_gp.pth')
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPPg'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPPg')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPPg/' +args.save +'_train_RN18_gp.pth')
      
 
 def test(epoch, net):
@@ -204,9 +204,9 @@ def test(epoch, net):
             'acc': acc,
             'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save+'_test_RN18_gp.pth') 
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPPg'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPPg')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPPg/' +args.save+'_test_RN18_gp.pth') 
 
 
 
@@ -266,13 +266,13 @@ for epoch in range(args.epochs):
         loss_total = loss_sharp - args.lam * loss_true #composite loss function
         loss_total.backward()
         grad = input_p.grad.detach()
-        input_p = torch.clamp(input_p + plr_sch(epoch) * torch.sign(grad), min=0.0, max=1.0)
+        input_p = torch.clamp(input_p + plr_sch(epoch) * grad, min=0.0, max=1.0)
         poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+    np.save('poisoned/resnet18CIPPg/'+args.save+'_gpimage.npy', poisonimage_np)
+    np.save('poisoned/resnet18CIPPg/'+args.save+'_gplabel.npy', poisonlabel_np)
 
 
 print('==> Data saving..')
-np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+np.save('poisoned/resnet18CIPPg/'+args.save+'_gpimage.npy', poisonimage_np)
+np.save('poisoned/resnet18CIPPg/'+args.save+'_gplabel.npy', poisonlabel_np)

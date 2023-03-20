@@ -27,7 +27,7 @@ parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Poisoned Evaluatio
 parser.add_argument('--loaderpath', default='', type=str, help='loader path')
 parser.add_argument('--modelpath', default='poisontest', type=str, help='model path')
 parser.add_argument('--savemodel', default='', type=str, help='path of models')
-parser.add_argument('--poisononly', default=False, help='poisononly')
+# parser.add_argument('--poisononly', default=False, help='poisononly')
 parser.add_argument('--save', default='p5_lr0001', type=str, help='name of dataloaders')
 args = parser.parse_args()
 print(args)
@@ -100,10 +100,10 @@ poisonset = PoisonTransferCIFAR10Pair(train=True, transform=transform_train, dow
 cleanset = torchvision.datasets.CIFAR10(
     root='./data', train=True, download=False, transform=transform_train)
 
-if args.poisononly:
-    trainset = poisonset
-else:
-    trainset = torch.utils.data.ConcatDataset([cleanset, poisonset])
+trainset = torch.utils.data.ConcatDataset([cleanset, poisonset])
+
+poisonloader = torch.utils.data.DataLoader(poisonset, batch_size=128, shuffle=True, num_workers=4)
+cleanloader = torch.utils.data.DataLoader(cleanset, batch_size=128, shuffle=True, num_workers=4)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=4)
 
 
@@ -118,5 +118,9 @@ criterion = nn.CrossEntropyLoss()
 
 print('test performance...')
 test(net, testloader)
+print('poison train performance...')
+test(net, poisonloader)
+print('clean train performance...')
+test(net, cleanloader)
 print('train performance...')
 test(net, trainloader)

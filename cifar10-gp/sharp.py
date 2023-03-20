@@ -111,5 +111,5 @@ if args.sharptype == 'sharp':
     elif args.gaussian == 1:
         sharpness = sharp_cal(net, criterion, trainloader, add_gaussian2, args.sigma)
 elif args.sharptype == 'loss':
-    sharpness = loss_cal(net, criterion, trainloader, optimizer)
+    sharpness = loss_cal(net, criterion, trainloader)
 print('sharpness:', sharpness)

@@ -165,13 +165,13 @@ def train(epoch, net, optimizer, trainloader):
 
         progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                      % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
-    # state = {
-    #     'net': net.state_dict(),
-    #     'epoch': epoch,
-    # }
-    # if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPR'):
-    #     os.mkdir('Cifar10checkpoint/poisongen/resnet18PPR')
-    # torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPR/' +args.save +'_train_RN18_gp.pth')
+    state = {
+        'net': net.state_dict(),
+        'epoch': epoch,
+    }
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18PPR'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18PPR')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18PPR/' +args.save +'_train_RN18_gp.pth')
      
 
 def test(epoch, net):

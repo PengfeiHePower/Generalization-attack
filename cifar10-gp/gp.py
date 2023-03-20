@@ -46,18 +46,16 @@ def data_shuffle(poisonloader, cleanloader, batch):
     return dataloader
 
 
-def loss_cal(net, criterion, trainloader, optimizer):
-    net.train()
-    total = 0
+def loss_cal(net, criterion, trainloader):
+    net.eval()
     total_loss = 0
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         inputs, targets = inputs.to(device), targets.to(device)
-        optimizer.zero_grad()
+        net.zero_grad()
         outputs = net(inputs)
         loss = criterion(outputs, targets)
-        total += targets.size(0)
+        print(batch_idx,':', loss)
         total_loss += loss.detach().item()
-
     return total_loss/len(trainloader)
 
 def sharp_cal(net, criterion, trainloader, add_gaussian, sigma):

@@ -57,15 +57,16 @@ parser.add_argument('--init', default='rand', type=str, help='init poison model'
 parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
 parser.add_argument('--pr', default=0.05, type=float, help='poison rate')
 # parser.add_argument('--budget', default=50, type=int, help='budget of perturbation size')
-parser.add_argument('--sigma', default=0.05, type=float, help='variance of gaussian distribution')
+parser.add_argument('--sigma', default=0.01, type=float, help='variance of gaussian distribution')
 parser.add_argument('--epochs', default=80, type=int, help='num of epochs')
-parser.add_argument('--plr', default=0.05, type=float, help='max learning rate of poison')
+parser.add_argument('--plr', default=0.02, type=float, help='max learning rate of poison')
 parser.add_argument('--num', default=20, type=int, help='number of gaussian noise')
 parser.add_argument('--save', default='p5_lam5', type=str, help='save path for dataloader')
 parser.add_argument('--inner', default=5, type=int, help='iteration for inner')
 parser.add_argument('--plrsch', default='fixed', type = str, help = 'poison lr scheduler')
-parser.add_argument('--lam', default=5, type=float, help='penalty coefficient')
+parser.add_argument('--lam', default=100, type=float, help='penalty coefficient')
 parser.add_argument('--opt', default='sgd', type=str, help='optimizer')
+parser.add_argument('--pgdstep', default = 10, type = int, help='pgd steps')
 #parser.add_argument('')
 # parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 args = parser.parse_args()
@@ -136,7 +137,7 @@ if args.plrsch == 'fixed':
         return args.plr
 elif args.plrsch == 'multistep':
     def plr_sch(t):
-        plr_list = [0.05]*80+[0.005]*40+[0.0005]*40+[0.00005]*40
+        plr_list = [0.05]*60+[0.005]*40+[0.0005]*40
         return plr_list[t]
 elif args.plrsch == 'superconverge':
     plr_sch = lambda t: np.interp([t], [0, args.epochs * 2 // 5, args.epochs], [0, args.plr, 0])[0]
@@ -171,9 +172,9 @@ def train(epoch, net, optimizer, trainloader):
         'net': net.state_dict(),
         'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save +'_train_RN18_gp.pth')
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPPpgd'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPPpgd')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPPpgd/' +args.save +'_train_RN18_gp.pth')
      
 
 def test(epoch, net):
@@ -204,9 +205,9 @@ def test(epoch, net):
             'acc': acc,
             'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save+'_test_RN18_gp.pth') 
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPPpgd'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPPpgd')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPPpgd/' +args.save+'_test_RN18_gp.pth') 
 
 
 
@@ -246,33 +247,37 @@ for epoch in range(args.epochs):
         net.train()
         print('batch:', batch_id)
         input_p, target_p = images.to(device), targets.to(device)
-        input_p.requires_grad = True
-        loss_sharp = 0
-        for _ in range(args.num): #estimate expected loss
-            net_clone = copy.deepcopy(net).to(device)
-            add_gaussian2(net_clone, args.sigma) #add gaussian noise to model parameters
-            output_p = net_clone(input_p)
-            loss_s = criterion(output_p, target_p)
-            # loss_s.backward()
-            # grad = input_p.grad.detach()
-            # loss_grad = loss_grad+grad
-            loss_sharp += loss_s
-        # loss_grad = loss_grad/args.num
-        loss_sharp = loss_sharp/args.num #poison sharpness
-        loss_true = criterion(net(input_p), target_p) #poison nature loss
-        print('poison loss:', loss_true)
-        print('poison sharpness:', loss_sharp)
-        # loss_true.backward()
-        loss_total = loss_sharp - args.lam * loss_true #composite loss function
-        loss_total.backward()
-        grad = input_p.grad.detach()
-        input_p = torch.clamp(input_p + plr_sch(epoch) * torch.sign(grad), min=0.0, max=1.0)
+        for j in range(args.pgdstep):
+            input_p.requires_grad = True
+            loss_sharp = 0
+            net.zero_grad()
+            for _ in range(args.num): #estimate expected loss
+                net_clone = copy.deepcopy(net).to(device)
+                add_gaussian2(net_clone, args.sigma) #add gaussian noise to model parameters
+                output_p = net_clone(input_p)
+                loss_s = criterion(output_p, target_p)
+                # loss_s.backward()
+                # grad = input_p.grad.detach()
+                # loss_grad = loss_grad+grad
+                loss_sharp += loss_s
+            # loss_grad = loss_grad/args.num
+            loss_sharp = loss_sharp/args.num #poison sharpness
+            loss_true = criterion(net(input_p), target_p) #poison nature loss
+            print('poison loss:', loss_true)
+            print('poison sharpness:', loss_sharp)
+            # loss_true.backward()
+            loss_total = loss_sharp - args.lam * loss_true #composite loss function
+            print('loss:', loss_total)
+            loss_total.backward()
+            with torch.no_grad():
+                input_p.copy_(torch.clamp(input_p + args.plr * input_p.grad, min=0.0, max=1.0))
+                input_p.grad = None
         poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+    np.save('poisoned/resnet18CIPPpgd/'+args.save+'_gpimage.npy', poisonimage_np)
+    np.save('poisoned/resnet18CIPPpgd/'+args.save+'_gplabel.npy', poisonlabel_np)
 
 
 print('==> Data saving..')
-np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+np.save('poisoned/resnet18CIPPpgd/'+args.save+'_gpimage.npy', poisonimage_np)
+np.save('poisoned/resnet18CIPPpgd/'+args.save+'_gplabel.npy', poisonlabel_np)

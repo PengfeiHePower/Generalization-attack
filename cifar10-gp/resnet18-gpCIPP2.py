@@ -1,5 +1,6 @@
 # remove poison budget, start from a clean pre-trained model, 
 # inner only consists of poison data, add penality to reduce the discrepency between poison and clean loss
+# relu of poison loss penalty
 import numpy as np
 import torch
 import torch.nn as nn
@@ -65,6 +66,7 @@ parser.add_argument('--save', default='p5_lam5', type=str, help='save path for d
 parser.add_argument('--inner', default=5, type=int, help='iteration for inner')
 parser.add_argument('--plrsch', default='fixed', type = str, help = 'poison lr scheduler')
 parser.add_argument('--lam', default=5, type=float, help='penalty coefficient')
+parser.add_argument('--thres', default=0.01, type=float, help='threshold for poison loss')
 parser.add_argument('--opt', default='sgd', type=str, help='optimizer')
 #parser.add_argument('')
 # parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
@@ -171,9 +173,9 @@ def train(epoch, net, optimizer, trainloader):
         'net': net.state_dict(),
         'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save +'_train_RN18_gp.pth')
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP2'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP2')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP2/' +args.save +'_train_RN18_gp.pth')
      
 
 def test(epoch, net):
@@ -204,9 +206,9 @@ def test(epoch, net):
             'acc': acc,
             'epoch': epoch,
     }
-    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP'):
-        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP')
-    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP/' +args.save+'_test_RN18_gp.pth') 
+    if not os.path.isdir('Cifar10checkpoint/poisongen/resnet18CIPP2'):
+        os.mkdir('Cifar10checkpoint/poisongen/resnet18CIPP2')
+    torch.save(state, './Cifar10checkpoint/poisongen/resnet18CIPP2/' +args.save+'_test_RN18_gp.pth') 
 
 
 
@@ -263,16 +265,16 @@ for epoch in range(args.epochs):
         print('poison loss:', loss_true)
         print('poison sharpness:', loss_sharp)
         # loss_true.backward()
-        loss_total = loss_sharp - args.lam * loss_true #composite loss function
+        loss_total = loss_sharp - args.lam * torch.max(torch.tensor(0.), loss_true-args.thres) #composite loss function
         loss_total.backward()
         grad = input_p.grad.detach()
         input_p = torch.clamp(input_p + plr_sch(epoch) * torch.sign(grad), min=0.0, max=1.0)
         poisonimage_np[batch_id*128:(min((batch_id+1)*128,poisonsize))] = input_p.detach().cpu().numpy()
     
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-    np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+    np.save('poisoned/resnet18CIPP2/'+args.save+'_gpimage.npy', poisonimage_np)
+    np.save('poisoned/resnet18CIPP2/'+args.save+'_gplabel.npy', poisonlabel_np)
 
 
 print('==> Data saving..')
-np.save('poisoned/resnet18CIPP/'+args.save+'_gpimage.npy', poisonimage_np)
-np.save('poisoned/resnet18CIPP/'+args.save+'_gplabel.npy', poisonlabel_np)
+np.save('poisoned/resnet18CIPP2/'+args.save+'_gpimage.npy', poisonimage_np)
+np.save('poisoned/resnet18CIPP2/'+args.save+'_gplabel.npy', poisonlabel_np)

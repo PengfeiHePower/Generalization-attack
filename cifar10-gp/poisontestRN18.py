@@ -64,7 +64,11 @@ class PoisonTransferCIFAR10Pair(CIFAR10):
 
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
 best_acc = 0  # best test accuracy
+acc_tr = 0
 acc_test = []
+acc_train = []
+loss_train = []
+loss_test = []
 
 
 # training function
@@ -91,6 +95,11 @@ def train(epoch, net, optimizer, trainloader, lr_sch):
 
         progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                      % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
+    
+    acc = 100.*correct/total
+    acc_train.append(acc)
+    loss_avg = train_loss/len(trainloader)
+    loss_train.append(loss_avg)
         
     state = {
         'net': net.state_dict(),
@@ -125,6 +134,8 @@ def test(epoch, net):
     # Save checkpoint.
     acc = 100.*correct/total
     acc_test.append(acc)
+    loss_avg = test_loss/len(trainloader)
+    loss_test.append(loss_avg)
     if acc > best_acc:
         print('Saving..')
         state = {
@@ -239,5 +250,29 @@ plt.ylabel('test accuracy',fontsize=12,color=(0,0,0), weight='bold')
 plt.xticks(size=12, weight='bold')
 plt.yticks(size=12, weight='bold')
 plt.plot(list(range(1,len(acc_test)+1)), acc_test)
-plt.savefig('./figures/'+ args.loaderpath + '/' + args.saveas+'_acc_gp.png')
+plt.savefig('./figures/'+ args.loaderpath + '/' + args.saveas+'_TEacc_gp.png')
+
+plt.figure(figsize=(8, 8))
+plt.xlabel('epoch',fontsize=12,color=(0,0,0), weight='bold')
+plt.ylabel('train accuracy',fontsize=12,color=(0,0,0), weight='bold')
+plt.xticks(size=12, weight='bold')
+plt.yticks(size=12, weight='bold')
+plt.plot(list(range(1,len(acc_train)+1)), acc_train)
+plt.savefig('./figures/'+ args.loaderpath + '/' + args.saveas+'_TRacc_gp.png')
+
+plt.figure(figsize=(8, 8))
+plt.xlabel('epoch',fontsize=12,color=(0,0,0), weight='bold')
+plt.ylabel('train loss',fontsize=12,color=(0,0,0), weight='bold')
+plt.xticks(size=12, weight='bold')
+plt.yticks(size=12, weight='bold')
+plt.plot(list(range(1,len(loss_train)+1)), loss_train)
+plt.savefig('./figures/'+ args.loaderpath + '/' + args.saveas+'_TRloss_gp.png')
+
+plt.figure(figsize=(8, 8))
+plt.xlabel('epoch',fontsize=12,color=(0,0,0), weight='bold')
+plt.ylabel('test loss',fontsize=12,color=(0,0,0), weight='bold')
+plt.xticks(size=12, weight='bold')
+plt.yticks(size=12, weight='bold')
+plt.plot(list(range(1,len(loss_test)+1)), loss_test)
+plt.savefig('./figures/'+ args.loaderpath + '/' + args.saveas+'_TEloss_gp.png')
 print('Figure saved.')
